@@ -20,9 +20,11 @@ export default function Home() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   useEffect(() => {
+    let stream: MediaStream | null = null;
+
     const getCameraPermission = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({video: true});
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
         setHasCameraPermission(true);
 
         if (cameraRef.current) {
@@ -39,8 +41,20 @@ export default function Home() {
       }
     };
 
-    getCameraPermission();
-  }, []);
+    if (isCameraOpen) {
+      getCameraPermission();
+    }
+
+    return () => {
+      if (stream) {
+        const tracks = stream.getTracks();
+        tracks.forEach(track => track.stop());
+        if (cameraRef.current) {
+          cameraRef.current.srcObject = null;
+        }
+      }
+    };
+  }, [isCameraOpen, toast]);
 
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,11 +74,19 @@ export default function Home() {
     try {
       const text = await navigator.clipboard.readText();
       if (text.startsWith('http://') || text.startsWith('https://')) {
-        setImageUrl(text);
-        toast({
-          title: "Link pasted",
-          description: "The link has been pasted. Click on extract text."
-        });
+        if (text.toLowerCase().endsWith('.pdf')) {
+             setImageUrl(text);
+             toast({
+               title: "PDF link pasted",
+               description: "The PDF link has been pasted.  Text extraction from PDFs is not directly supported.  Please ensure that the link points to an image-based PDF",
+             });
+        } else {
+          setImageUrl(text);
+          toast({
+            title: "Link pasted",
+            description: "The link has been pasted. Click on extract text."
+          });
+        }
       } else {
         toast({
           title: "Invalid Link",
