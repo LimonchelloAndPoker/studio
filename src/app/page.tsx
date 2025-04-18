@@ -1,21 +1,47 @@
-
 "use client";
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Icons } from "@/components/icons";
-import { toast } from "@/hooks/use-toast";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { extractTextFromImage } from "@/ai/flows/extract-text-from-image";
 
 export default function Home() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLVideoElement>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const { toast } = useToast();
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+
+  useEffect(() => {
+    const getCameraPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({video: true});
+        setHasCameraPermission(true);
+
+        if (cameraRef.current) {
+          cameraRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings to use this app.',
+        });
+      }
+    };
+
+    getCameraPermission();
+  }, []);
+
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -30,18 +56,62 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  const handleCameraCapture = () => {
-    // This will open the device's camera, but handling the image capture
-    // and processing would typically involve a third-party library or
-    // a more complex implementation.
-    alert("Camera capture functionality will be implemented here.");
+  const handlePasteLink = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.startsWith('http://') || text.startsWith('https://')) {
+        setImageUrl(text);
+        toast({
+          title: "Link pasted",
+          description: "The link has been pasted. Click on extract text."
+        });
+      } else {
+        toast({
+          title: "Invalid Link",
+          description: "The pasted text is not a valid URL.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to read clipboard contents: ", error);
+      toast({
+        title: "Error",
+        description: "Failed to read clipboard contents.",
+        variant: "destructive",
+      });
+    }
   };
+
+  const handleOpenCamera = () => {
+    setIsCameraOpen(true);
+  };
+
+  const handleCaptureImage = () => {
+    if (!cameraRef.current) {
+      toast({
+        title: "Camera Error",
+        description: "Camera is not accessible.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = cameraRef.current.videoWidth;
+    canvas.height = cameraRef.current.videoHeight;
+    canvas.getContext('2d')?.drawImage(cameraRef.current, 0, 0, canvas.width, canvas.height);
+
+    const dataUrl = canvas.toDataURL('image/png');
+    setImageUrl(dataUrl);
+    setIsCameraOpen(false);
+  };
+
 
   const handleTextExtraction = async () => {
     if (!imageUrl) {
       toast({
         title: "No image uploaded",
-        description: "Please upload an image to extract text from.",
+        description: "Please upload an image or paste a link to extract text from.",
       });
       return;
     }
@@ -95,9 +165,13 @@ export default function Home() {
           <Icons.file className="w-4 h-4 mr-2" />
           Upload Image
         </Button>
-        <Button onClick={handleCameraCapture}>
-          <Icons.camera className="w-4 h-4 mr-2" />
-          Open Camera
+        <Button onClick={handleOpenCamera} disabled={!hasCameraPermission}>
+            <Icons.camera className="w-4 h-4 mr-2" />
+            Open Camera
+        </Button>
+        <Button onClick={handlePasteLink}>
+          <Icons.copy className="w-4 h-4 mr-2" />
+          Paste Link
         </Button>
         <Input
           type="file"
@@ -108,7 +182,23 @@ export default function Home() {
         />
       </div>
 
-      {imageUrl && (
+      {isCameraOpen && (
+          <div className="mb-4">
+            <video ref={cameraRef} className="w-full aspect-video rounded-md" autoPlay muted />
+            { !(hasCameraPermission) && (
+                <Alert variant="destructive">
+                          <AlertTitle>Camera Access Required</AlertTitle>
+                          <AlertDescription>
+                            Please allow camera access to use this feature.
+                          </AlertDescription>
+                </Alert>
+            )
+            }
+            <Button onClick={handleCaptureImage} disabled={!hasCameraPermission}>Capture Image</Button>
+          </div>
+        )}
+
+      {imageUrl && !isCameraOpen && (
         <div className="mb-4">
           <img
             src={imageUrl}
